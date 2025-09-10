@@ -33,17 +33,25 @@ class Inventario(models.Model):
     """
     criar sistema de Inventario ligado ao sobrevivente
     """
-    denunciante = models.ForeignKey(Sobrevivente, on_delete=models.CASCADE , related_name='denuncias_feitas')
-    denunciado = models.ForeignKey(Sobrevivente, on_delete=models.CASCADE , related_name='denuncias_recebidas')
+    sobrevivente = models.ForeignKey(Sobrevivente, on_delete=models.CASCADE)
+    item = models.ForeignKey(Item, on_delete=models.CASCADE)
+    quantidade = models.IntegerField()
+    def __str__(self):
+        return f"{self.quantidade} x {self.item.nome} para {self.sobrevivente.nome}"
+
+
+
+class DenunciaInfeccao(models.Model):
+
+    denunciante = models.ForeignKey(Sobrevivente, on_delete=models.CASCADE, related_name='denuncias_feitas')
+    denunciado = models.ForeignKey(Sobrevivente, on_delete=models.CASCADE, related_name='denuncias_recebidas')
 
     class Meta:
-        """
-        garante que seja feito uma unica vez a deunincia gracas a funcao unique_together
-        """
         unique_together = ('denunciante', 'denunciado')
-
     def __str__(self):
-        return f"{self.denunciante.nome} denunciou {self.denunciado.nome}"
+        return f"{self.denunciante.nome} denuncioi {self.denunciado.nome}"
+
+
 
     """
     Usando os campos do Django (CharField, IntegerField, etc.) para poder definir as colunas no banco de dados criado
