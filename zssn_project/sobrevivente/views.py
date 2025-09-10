@@ -99,3 +99,42 @@ class TrocarItemViewSet(viewsets.ModelViewSet):
             inventario_recebedor.save()
 
 class RelatoriosView(views.APIView):
+    """
+       View que gera os relatórios solicitados.
+       """
+
+    def get(self, request, *args, **kwargs):
+        total_sobreviventes = Sobrevivente.objects.count()
+        if total_sobreviventes == 0:
+            return Response({"mensagem": "Não há sobreviventes cadastrados para gerar relatórios."})
+
+        # Relatório de Infectados e Não Infectados
+        infectados_count = Sobrevivente.objects.filter(infectado=True).count()
+        porc_infectados = (infectados_count / total_sobreviventes) * 100
+        porc_nao_infectados = 100 - porc_infectados
+
+        # Média de itens por sobrevivente (apenas não infectados)
+        nao_infectados = Sobrevivente.objects.filter(infectado=False)
+        nao_infectados_count = nao_infectados.count()
+
+        media_itens = {}
+        if nao_infectados_count > 0:
+            itens = Item.objects.all()
+            for item in itens:
+                total_item = Inventario.objects.filter(sobrevivente__in=nao_infectados, item=item).aggregate(
+                    total=Sum('quantidade'))['total'] or 0
+                media_itens[f"media_de_{item.nome.lower()}"] = total_item / nao_infectados_count
+
+        # Pontos perdidos por usuários infectados
+        pontos_perdidos = Inventario.objects.filter(sobrevivente__infectado=True).aggregate(
+            total_pontos=Sum(F('quantidade') * F('item__pontos'), output_field=FloatField())
+        )['total_pontos'] or 0
+
+        relatorio = {
+            "porcentagem_infectados": f"{porc_infectados:.2f}%",
+            "porcentagem_nao_infectados": f"{porc_nao_infectados:.2f}%",
+            "media_recursos_por_sobrevivente_nao_infectado": media_itens,
+            "pontos_perdidos_devido_a_sobreviventes_infectados": pontos_perdidos
+        }
+
+        return Response(relatorio, status=status.HTTP_200_OK)
