@@ -16,7 +16,11 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
+from django.contrib import admin
+from django.urls import path, include # Adicione 'include'
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # Qualquer URL que comece com 'api/' será redirecionada para o nosso app
+    path('api/', include('api.urls')),
 ]

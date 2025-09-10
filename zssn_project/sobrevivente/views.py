@@ -70,9 +70,6 @@ class TrocarItemViewSet(viewsets.ModelViewSet):
             return Response({"erro": "sobrevivente nao encontrado"}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as e:
             return Response({"erro": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        """
-        Estou criando a o calculo de media de pontos
-        """
 
     def calcular_pontos(self, itens_data):
         total_pontos = 0
@@ -138,3 +135,7 @@ class RelatoriosView(views.APIView):
         }
 
         return Response(relatorio, status=status.HTTP_200_OK)
+""""
+EXPLICACAO
+SobreviventeViewSet: Usa a classe ModelViewSet, que já nos da a funcionalidade de Criar (POST), Listar (GET), Detalhar (GET com ID), Atualizar (PUT/PATCH) e Deletar (DELETE) um sobrevivente.
+"""
