@@ -1,49 +1,39 @@
 from rest_framework import serializers
-from .models import  Sobrevivente, Item, Inventario
-
-class SobreviventeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Item
-        fields = ['nome', 'pontos']
-
+from .models import Sobrevivente, Item, ItemInventario
 
 class ItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = Item
-        fields = ('nome', 'pontos')
+        fields = ['nome', 'pontos']
 
-class InventarioSerializer(serializers.ModelSerializer):
-
-    itens = ItemSerializer(many=True, read_only=True)
+class ItemInventarioSerializer(serializers.ModelSerializer):
+    # Usamos um serializer aninhado para mostrar os detalhes do item
+    item = ItemSerializer(read_only=True)
 
     class Meta:
-        model = Inventario
-        fields = ('id', 'sobrevivente', 'itens')
+        model = ItemInventario
+        fields = ['item', 'quantidade']
 
-
-class SobreviventeInventarioSerializer(serializers.ModelSerializer):
-
-    inventario = InventarioSerializer(many=True, read_only=True)
+class SobreviventeSerializer(serializers.ModelSerializer):
+    # Usamos a fonte correta para buscar os itens do inventário
+    inventario = ItemInventarioSerializer(many=True, read_only=True, source='inventario.iteminventario_set')
 
     class Meta:
         model = Sobrevivente
         fields = ['id', 'nome', 'idade', 'sexo', 'latitude', 'longitude', 'infectado', 'inventario']
-        read_only_fields = ['inventario', 'infectado']
-
-    def create(self, validated_data):
-
-        sobrevivente = Sobrevivente.objects.create(**validated_data)
-        itens = Item.objects.all()
-
-        for item in itens:
-            Inventario.objects.create(sobrevivente=sobrevivente, item=item, quantidade=0)
-        return sobrevivente
+        read_only_fields = ['infectado'] # O status de infectado só deve ser alterado pelo sistema
 
 class TrocaItemSerializer(serializers.Serializer):
+    # Serializer para validar os dados de entrada da troca
     sobrevivente1_id = serializers.IntegerField()
-    itens_sobrevivente1 = serializers.ListField(child=serializers.DictField())
+    itens_sobrevivente1 = serializers.ListField(
+        child=serializers.DictField(
+            child=serializers.IntegerField(),
+        )
+    )
     sobrevivente2_id = serializers.IntegerField()
-    itens_sobrevivente2 = serializers.ListField(child=serializers.DictField())
-    def validate(self, data):
-        return data
-
+    itens_sobrevivente2 = serializers.ListField(
+        child=serializers.DictField(
+            child=serializers.IntegerField(),
+        )
+    )
