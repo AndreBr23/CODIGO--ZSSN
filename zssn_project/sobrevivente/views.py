@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db import transaction
 from django.db.models import Count, Avg, Sum
-from .models import Sobrevivente, ItemInventario, ReporteInfeccao, TipoItem
+from .models import Sobreviventes, ItemInventario, ReporteInfeccao, TipoItem
 from .serializers import (
     SobreviventeSerializer, SobreviventeCreateSerializer,
     AtualizarLocalizacaoSerializer, ReporteInfeccaoSerializer,
@@ -14,7 +14,7 @@ from .serializers import (
 class SobreviventeViewSet(viewsets.ModelViewSet):
     """ViewSet para gerenciar sobreviventes"""
 
-    queryset = Sobrevivente.objects.all()
+    queryset = Sobreviventes.objects.all()
 
     def get_serializer_class(self):
         """Retorna o serializer apropriado para cada ação"""
@@ -25,8 +25,8 @@ class SobreviventeViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filtra sobreviventes não infectados para listagem"""
         if self.action == 'list':
-            return Sobrevivente.objects.filter(infectado=False)
-        return Sobrevivente.objects.all()
+            return Sobreviventes.objects.filter(infectado=False)
+        return Sobreviventes.objects.all()
 
     @action(detail=True, methods=['patch'])
     def atualizar_localizacao(self, request, pk=None):
@@ -66,10 +66,10 @@ class SobreviventeViewSet(viewsets.ModelViewSet):
         if serializer.is_valid():
             # Verifica se o sobrevivente reportador existe
             try:
-                sobrevivente_reportador = Sobrevivente.objects.get(
+                sobrevivente_reportador = Sobreviventes.objects.get(
                     id=request.data.get('sobrevivente_reportador')
                 )
-            except Sobrevivente.DoesNotExist:
+            except Sobreviventes.DoesNotExist:
                 return Response(
                     {'erro': 'Sobrevivente reportador não encontrado.'},
                     status=status.HTTP_400_BAD_REQUEST
@@ -203,10 +203,10 @@ class SobreviventeViewSet(viewsets.ModelViewSet):
         serializer = EscamboSerializer(data=request.data)
         if serializer.is_valid():
             try:
-                sobrevivente_destino = Sobrevivente.objects.get(
+                sobrevivente_destino = Sobreviventes.objects.get(
                     id=serializer.validated_data['sobrevivente_destino_id']
                 )
-            except Sobrevivente.DoesNotExist:
+            except Sobreviventes.DoesNotExist:
                 return Response(
                     {'erro': 'Sobrevivente de destino não encontrado.'},
                     status=status.HTTP_400_BAD_REQUEST
@@ -305,8 +305,8 @@ class SobreviventeViewSet(viewsets.ModelViewSet):
         """Gera relatórios estatísticos do sistema"""
 
         # Contadores básicos
-        total_sobreviventes = Sobrevivente.objects.count()
-        sobreviventes_infectados = Sobrevivente.objects.filter(infectado=True).count()
+        total_sobreviventes = Sobreviventes.objects.count()
+        sobreviventes_infectados = Sobreviventes.objects.filter(infectado=True).count()
         sobreviventes_saudaveis = total_sobreviventes - sobreviventes_infectados
 
         # Calcula porcentagens
@@ -334,7 +334,7 @@ class SobreviventeViewSet(viewsets.ModelViewSet):
 
         # Calcula pontos perdidos por usuários infectados
         pontos_perdidos = 0
-        sobreviventes_infectados_obj = Sobrevivente.objects.filter(infectado=True)
+        sobreviventes_infectados_obj = Sobreviventes.objects.filter(infectado=True)
         for sobrevivente in sobreviventes_infectados_obj:
             for item in sobrevivente.inventario.all():
                 pontos_perdidos += item.calcular_pontos()

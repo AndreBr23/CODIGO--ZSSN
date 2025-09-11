@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Sobrevivente, ItemInventario, ReporteInfeccao, TipoItem
+from .models import Sobreviventes, ItemInventario, ReporteInfeccao, TipoItem
 
 
 class ItemInventarioSerializer(serializers.ModelSerializer):
@@ -35,7 +35,7 @@ class SobreviventeSerializer(serializers.ModelSerializer):
     total_reportes = serializers.SerializerMethodField()
 
     class Meta:
-        model = Sobrevivente
+        model = Sobreviventes
         fields = [
             'id', 'nome', 'idade', 'sexo', 'latitude', 'longitude',
             'infectado', 'inventario', 'total_pontos', 'status',
@@ -60,7 +60,7 @@ class SobreviventeCreateSerializer(serializers.ModelSerializer):
     """Serializer para criação de sobreviventes"""
 
     class Meta:
-        model = Sobrevivente
+        model = Sobreviventes
         fields = ['nome', 'idade', 'sexo', 'latitude', 'longitude']
 
     def validate_idade(self, value):

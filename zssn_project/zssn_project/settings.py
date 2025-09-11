@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     "rest_framework",
-    "sobrevivente",
+    "Sobrevivente",
 ]
 
 MIDDLEWARE = [
@@ -78,8 +78,8 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'zssn_db',
-        'USER': 'postgres',
-        'PASSWORD': '123456789',
+        'USER': 'zssn_user',
+        'PASSWORD': '3240',
         'HOST': 'localhost',
         'PORT': '5432'
     }

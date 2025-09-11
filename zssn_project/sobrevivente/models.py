@@ -17,7 +17,7 @@ class SexoChoices(models.TextChoices):
     OUTRO = 'O', 'Outro'
 
 
-class Sobrevivente(models.Model):
+class Sobreviventes(models.Model):
     """Modelo que representa um sobrevivente no sistema"""
 
     nome = models.CharField(max_length=100, verbose_name="Nome do Sobrevivente")
@@ -72,13 +72,13 @@ class ReporteInfeccao(models.Model):
     """Modelo para registrar reportes de infecção entre sobreviventes"""
 
     sobrevivente_reportado = models.ForeignKey(
-        Sobrevivente,
+        Sobreviventes,
         on_delete=models.CASCADE,
         related_name='reportes_recebidos',
         verbose_name="Sobrevivente Reportado"
     )
     sobrevivente_reportador = models.ForeignKey(
-        Sobrevivente,
+        Sobreviventes,
         on_delete=models.CASCADE,
         related_name='reportes_feitos',
         verbose_name="Sobrevivente que Reportou"
@@ -106,7 +106,7 @@ class ItemInventario(models.Model):
     }
 
     sobrevivente = models.ForeignKey(
-        Sobrevivente,
+        Sobreviventes,
         on_delete=models.CASCADE,
         related_name='inventario',
         verbose_name="Sobrevivente"

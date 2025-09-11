@@ -1,8 +1,8 @@
 from django.contrib import admin
-from .models import Sobrevivente, ItemInventario, ReporteInfeccao
+from .models import Sobreviventes, ItemInventario, ReporteInfeccao
 
 
-@admin.register(Sobrevivente)
+@admin.register(Sobreviventes)
 class SobreviventeAdmin(admin.ModelAdmin):
     """Configuração do admin para Sobreviventes"""
 
