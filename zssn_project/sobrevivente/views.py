@@ -5,7 +5,34 @@ from rest_framework import viewsets, status, views
 from rest_framework.response import  Response
 from rest_framework.decorators import  action, api_view
 from .models import  Sobrevivente, Item, Inventario, DenunciaInfeccao
-from .serializers import  SobreviventeSerializer
+from .serializers import SobreviventeSerializer, TrocaItemSerializer
+
+
+@api_view(['POST'])
+def reportar_infectado(request, sobrevivente_id):
+    try:
+        sobrevivente_reportado = Sobrevivente.objects.get(id=sobrevivente_id)
+    except Sobrevivente.DoesNotExist:
+        return Response({"erro": "O sobrevivente que você tentou reportar não existe."},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    # Verifica se o sobrevivente já está infectado
+    if sobrevivente_reportado.infectado:
+        return Response({"mensagem": "Este sobrevivente já está marcado como infectado."},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    # Incrementa o contador de denúncias
+    sobrevivente_reportado.reports += 1
+
+    # Se o número de denúncias chegar a 3, marca como infectado
+    if sobrevivente_reportado.reports >= 3:
+        sobrevivente_reportado.infectado = True
+
+    sobrevivente_reportado.save()
+
+    serializer = SobreviventeSerializer(sobrevivente_reportado)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 
 @api_view(['GET', 'POST'])

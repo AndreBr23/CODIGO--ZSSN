@@ -13,5 +13,4 @@ urlpatterns = [
     path('<int:pk>/', views.detalhe_sobrevivente, name="detalhe_sobrevivente"),
     path('<int:sobrevivente_id>/reportar/', views.reportar_infectado, name="reportar_infectado"),
     path('', include(router.urls)),
-    pat
 ]
