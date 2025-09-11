@@ -21,8 +21,8 @@ pip install -r requirements.txt
 ### 2. Configurar PostgreSQL
 \`\`\`bash
 # Criar banco de dados
-psql -U postgres -c "CREATE DATABASE apocalipse_zumbi_db;"
-psql -U postgres -c "CREATE USER apocalipse_user WITH PASSWORD 'senha123';"
+psql -U postgres -c "CREATE DATABASE zssn_db;"
+psql -U postgres -c "CREATE USER zssn_user WITH PASSWORD '3240';"
 psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE apocalipse_zumbi_db TO apocalipse_user;"
 \`\`\`
 
