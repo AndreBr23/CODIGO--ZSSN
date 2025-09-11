@@ -3,9 +3,79 @@ from django.db.models import Count, Sum, F
 from django.db.models.fields import FloatField
 from rest_framework import viewsets, status, views
 from rest_framework.response import  Response
-from rest_framework.decorators import  action
+from rest_framework.decorators import  action, api_view
 from .models import  Sobrevivente, Item, Inventario, DenunciaInfeccao
 from .serializers import  SobreviventeSerializer
+
+
+@api_view(['GET', 'POST'])
+def listar_criar_sobreviventes(request):
+    """
+    Lista todos os sobreviventes ou cria um novo.
+    """
+    if request.method == 'GET':
+        sobreviventes = Sobrevivente.objects.all()
+        serializer = SobreviventeSerializer(sobreviventes, many=True)
+        return Response(serializer.data)
+
+    elif request.method == 'POST':
+        serializer = SobreviventeSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)  # 201 Created
+        return Response(serializer.errors, status=400)  # 400 Bad Request
+
+
+@api_view(['GET', 'PUT', 'PATCH'])
+def detalhe_sobrevivente(request, pk):
+    """
+    Recupera ou atualiza a localização de um sobrevivente.
+    """
+    try:
+        sobrevivente = Sobrevivente.objects.get(pk=pk)
+    except Sobrevivente.DoesNotExist:
+        return Response(status=404)
+
+    if request.method == 'GET':
+        serializer = SobreviventeSerializer(sobrevivente)
+        return Response(serializer.data)
+
+    elif request.method in ['PUT', 'PATCH']:
+        # Apenas permite a atualização dos campos 'latitude' e 'longitude'
+        data = {
+            'latitude': request.data.get('latitude', sobrevivente.latitude),
+            'longitude': request.data.get('longitude', sobrevivente.longitude)
+        }
+        serializer = SobreviventeSerializer(sobrevivente, data=data,
+                                            partial=True)  # partial=True permite atualização parcial
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
+@api_view(['POST'])
+def denunciar_infeccao(request, sobrevivente_id):
+    try:
+        sobrevivente = Sobrevivente.objects.get(id=sobrevivente_id)
+    except Sobrevivente.DoesNotExist:
+        return Response({"erro": "sobrevivente nao encontrado"}, status=status.HTTP_404_NOT_FOUND)
+
+    reporter_id = request.data.get('reporter_id')
+    if not reporter_id:
+        return Response({'erro':"sobrevivente deve declara a ID", status:status.HTTP_400_BAD_REQUEST})
+    try:
+        reporter = Sobrevivente.objects.get(id=reporter_id)
+    except Sobrevivente.DoesNotExist:
+        return Response({"erro": "sobrevivente nao encontrado"}, status=status.HTTP_404_NOT_FOUND)
+    if reporter_id == sobrevivente.id:
+        return Response({"erro" : "sobrevivente nao pode denunciar si mesmo"}, status=status.HTTP_400_BAD_REQUEST)
+    sobrevivente.reportes += 1
+
+    if sobrevivente.reportes >= 3:
+        sobrevivente.infectado = True
+        sobrevivente.save()
+        serializer = SobreviventeSerializer(sobrevivente, many=False)
+        return Response(serializer.data)
 
 class SobreviventeViewSet(viewsets.ModelViewSet):
     queryset = Sobrevivente.objects.all()
@@ -135,6 +205,19 @@ class RelatoriosView(views.APIView):
         }
 
         return Response(relatorio, status=status.HTTP_200_OK)
+
+
+class TrocarItemViewSet(viewsets.ViewSet):
+    """
+    Endpoint para troca de itens entre dois sobreviventes.
+    """
+    def create(self, request):
+        serializer = TrocaItemSerializer(data=request.data)
+        if serializer.is_valid():
+            return Response({"message": "Troca realizada com sucesso!"}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 """"
 EXPLICACAO
 SobreviventeViewSet: Usa a classe ModelViewSet, que já nos da a funcionalidade de Criar (POST), Listar (GET), Detalhar (GET com ID), Atualizar (PUT/PATCH) e Deletar (DELETE) um sobrevivente.

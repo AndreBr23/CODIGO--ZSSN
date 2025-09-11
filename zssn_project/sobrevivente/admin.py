@@ -14,8 +14,14 @@ class SobreviventeAdmin(admin.ModelAdmin):
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):
     list_display = ('nome', 'pontos')
+    search_fields = ('nome',)
 @admin.register(DenunciaInfeccao)
 class DenunciaInfeccaoAdmin(admin.ModelAdmin):
     list_dsplay = ('denunciante', 'denunciado')
     autocomplete_fields = ('denunciante', 'denunciado')
 # Register your models here.
+@admin.register(Inventario)
+class InventarioAdmin(admin.ModelAdmin):
+    list_display = ('sobrevivente', 'item', 'quantidade')
+    list_filter = ('item',)
+    search_fields = ('sobrevivente', 'item', 'nome')
