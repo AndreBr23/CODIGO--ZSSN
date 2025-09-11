@@ -1,312 +1,361 @@
-# ==============================================================================
-# IMPORTS
-# ==============================================================================
-# Django
-from django.db import transaction
-from django.db.models import Count, Sum, F, FloatField
-
-# Django Rest Framework
-from rest_framework import viewsets, status, views
-from rest_framework.decorators import action, api_view
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.db import transaction
+from django.db.models import Count, Avg, Sum
+from .models import Sobrevivente, ItemInventario, ReporteInfeccao, TipoItem
+from .serializers import (
+    SobreviventeSerializer, SobreviventeCreateSerializer,
+    AtualizarLocalizacaoSerializer, ReporteInfeccaoSerializer,
+    AdicionarItemSerializer, RemoverItemSerializer, EscamboSerializer
+)
 
-# Aplicação Local
-from .models import Sobrevivente, Item, Inventario, ItemInventario, DenunciaInfeccao
-from .serializers import SobreviventeSerializer, TrocaItemSerializer
-
-
-# ==============================================================================
-# VIEWS BASEADAS EM FUNÇÕES (FUNCTION-BASED VIEWS)
-# ==============================================================================
-
-@api_view(['GET', 'POST'])
-def listar_criar_sobreviventes(request):
-    """
-    View para listar todos os sobreviventes (GET) ou criar um novo (POST).
-    """
-    if request.method == 'GET':
-        sobreviventes = Sobrevivente.objects.all()
-        serializer = SobreviventeSerializer(sobreviventes, many=True)
-        return Response(serializer.data)
-
-    elif request.method == 'POST':
-        serializer = SobreviventeSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['GET', 'PUT', 'PATCH'])
-def detalhe_sobrevivente(request, pk):
-    """
-    View para recuperar (GET) ou atualizar a localização de um sobrevivente (PUT/PATCH).
-    """
-    try:
-        sobrevivente = Sobrevivente.objects.get(pk=pk)
-    except Sobrevivente.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-
-    if request.method == 'GET':
-        serializer = SobreviventeSerializer(sobrevivente)
-        return Response(serializer.data)
-
-    elif request.method in ['PUT', 'PATCH']:
-        # Permite apenas a atualização dos campos 'latitude' e 'longitude'
-        data = {
-            'latitude': request.data.get('latitude', sobrevivente.latitude),
-            'longitude': request.data.get('longitude', sobrevivente.longitude)
-        }
-        serializer = SobreviventeSerializer(sobrevivente, data=data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['POST'])
-def reportar_infectado(request, sobrevivente_id):
-    """
-    View para reportar um sobrevivente como infectado.
-    NOTA: Esta é uma das implementações de denúncia.
-    """
-    try:
-        sobrevivente_reportado = Sobrevivente.objects.get(id=sobrevivente_id)
-    except Sobrevivente.DoesNotExist:
-        return Response({"erro": "O sobrevivente que você tentou reportar não existe."},
-                        status=status.HTTP_404_NOT_FOUND)
-
-    if sobrevivente_reportado.infectado:
-        return Response({"mensagem": "Este sobrevivente já está marcado como infectado."},
-                        status=status.HTTP_400_BAD_REQUEST)
-
-    # CORREÇÃO: O nome do campo no modelo é 'reports', não 'reportes'.
-    sobrevivente_reportado.reports += 1
-
-    if sobrevivente_reportado.reports >= 3:
-        sobrevivente_reportado.infectado = True
-
-    sobrevivente_reportado.save()
-    serializer = SobreviventeSerializer(sobrevivente_reportado)
-    return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-@api_view(['POST'])
-def denunciar_infeccao(request, sobrevivente_id):
-    """
-    View alternativa para denunciar infecção.
-    NOTA: Esta é outra implementação de denúncia, mantida conforme solicitado.
-    """
-    try:
-        sobrevivente = Sobrevivente.objects.get(id=sobrevivente_id)
-    except Sobrevivente.DoesNotExist:
-        return Response({"erro": "Sobrevivente não encontrado"}, status=status.HTTP_404_NOT_FOUND)
-
-    reporter_id = request.data.get('reporter_id')
-    if not reporter_id:
-        # CORREÇÃO: A sintaxe do dicionário estava incorreta.
-        return Response({'erro': "O ID do sobrevivente que reporta é obrigatório."}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        reporter = Sobrevivente.objects.get(id=reporter_id)
-    except Sobrevivente.DoesNotExist:
-        return Response({"erro": "Sobrevivente que reporta não encontrado."}, status=status.HTTP_404_NOT_FOUND)
-
-    if reporter.id == sobrevivente.id:
-        return Response({"erro": "Um sobrevivente não pode denunciar a si mesmo."}, status=status.HTTP_400_BAD_REQUEST)
-
-    # CORREÇÃO: O nome do campo no modelo é 'reports'.
-    sobrevivente.reports += 1
-
-    if sobrevivente.reports >= 3:
-        sobrevivente.infectado = True
-
-    sobrevivente.save()
-    serializer = SobreviventeSerializer(sobrevivente)
-    return Response(serializer.data)
-
-
-# ==============================================================================
-# VIEWS BASEADAS EM CLASSES (CLASS-BASED VIEWS)
-# ==============================================================================
 
 class SobreviventeViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet para operações CRUD de Sobreviventes e denúncias.
-    """
+    """ViewSet para gerenciar sobreviventes"""
+
     queryset = Sobrevivente.objects.all()
-    serializer_class = SobreviventeSerializer
 
-    def partial_update(self, request, *args, **kwargs):
-        # CORREÇÃO: Corrigido erro de digitação 'sobrerivente' -> 'sobrevivente'.
+    def get_serializer_class(self):
+        """Retorna o serializer apropriado para cada ação"""
+        if self.action == 'create':
+            return SobreviventeCreateSerializer
+        return SobreviventeSerializer
+
+    def get_queryset(self):
+        """Filtra sobreviventes não infectados para listagem"""
+        if self.action == 'list':
+            return Sobrevivente.objects.filter(infectado=False)
+        return Sobrevivente.objects.all()
+
+    @action(detail=True, methods=['patch'])
+    def atualizar_localizacao(self, request, pk=None):
+        """Atualiza a localização de um sobrevivente"""
         sobrevivente = self.get_object()
+
         if sobrevivente.infectado:
-            return Response({"erro": "Não pode atualizar a localização de um sobrevivente infectado."},
-                            status=status.HTTP_400_BAD_REQUEST)
-        return super().partial_update(request, *args, **kwargs)
+            return Response(
+                {'erro': 'Sobreviventes infectados não podem atualizar sua localização.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-    @action(detail=True, methods=['post'])
-    def denunciar_infeccao(self, request, pk=None):
-        """
-        Action para um sobrevivente denunciar outro.
-        NOTA: Terceira implementação de denúncia, dentro de um ViewSet.
-        """
-        denunciado = self.get_object()
-        # CORREÇÃO: Padronizado nome da variável.
-        denunciante_id = request.data.get('denunciante_id')
-
-        if not denunciante_id:
-            # CORREÇÃO: A sintaxe do dicionário estava incorreta.
-            return Response({'erro': "O ID do denunciante é obrigatório."}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            denunciante = Sobrevivente.objects.get(pk=denunciante_id)
-        except Sobrevivente.DoesNotExist:
-            return Response({"erro": "Sobrevivente denunciante não encontrado."}, status=status.HTTP_404_NOT_FOUND)
-
-        if denunciante.id == denunciado.id:
-            return Response({"erro": "Um sobrevivente não pode denunciar a si mesmo."},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        # CORREÇÃO LÓGICA: O código abaixo estava indentado incorretamente e não seria executado.
-        created, _ = DenunciaInfeccao.objects.get_or_create(denunciante=denunciante, denunciado=denunciado)
-
-        if created:
-            # CORREÇÃO LÓGICA: Verifica o total de denúncias contra o denunciado.
-            total_denuncias = DenunciaInfeccao.objects.filter(denunciado=denunciado).count()
-            if total_denuncias >= 3:
-                denunciado.infectado = True
-                denunciado.save()
-                return Response(
-                    {"mensagem": f"Denúncia registrada. O sobrevivente {denunciado.nome} foi marcado como infectado."})
-            return Response({"mensagem": "Denúncia registrada com sucesso."})
-        else:
-            return Response({"mensagem": "Você já denunciou este sobrevivente."}, status=status.HTTP_400_BAD_REQUEST)
-
-
-# COMENTÁRIO: Existem duas classes com o mesmo nome. Para evitar conflitos,
-# renomeei-as para "...Completo" e "...Simples", mantendo ambas.
-class TrocarItemViewSetCompleto(viewsets.ViewSet):
-    """
-    ViewSet com a lógica completa para troca de itens.
-    """
-
-    def create(self, request, *args, **kwargs):
-        # CORREÇÃO: Renomeado de 'post' para 'create', que é o método correto para POST em ViewSets.
-        id1 = request.data.get('sobrevivente1_id')
-        id2 = request.data.get('sobrevivente2_id')
-        itens1_data = request.data.get('itens_sobrevivente1')
-        itens2_data = request.data.get('itens_sobrevivente2')
-
-        try:
-            sobrevivente1 = Sobrevivente.objects.get(id=id1)
-            sobrevivente2 = Sobrevivente.objects.get(id=id2)
-
-            if sobrevivente1.infectado or sobrevivente2.infectado:
-                return Response({"erro": "Trocas envolvendo sobreviventes infectados não são permitidas."},
-                                status=status.HTTP_400_BAD_REQUEST)
-
-            pontos1 = self._calcular_pontos(itens1_data)
-            pontos2 = self._calcular_pontos(itens2_data)
-
-            if pontos1 != pontos2:
-                return Response({"erro": "A soma dos pontos dos itens trocados deve ser igual."},
-                                status=status.HTTP_400_BAD_REQUEST)
-
-            with transaction.atomic():
-                # CORREÇÃO: Corrigido erro de digitação 'transferir_itebs'.
-                self._transferir_itens(sobrevivente1, sobrevivente2, itens1_data)
-                self._transferir_itens(sobrevivente2, sobrevivente1, itens2_data)
-
-            return Response({"mensagem": "Troca realizada com sucesso!"}, status=status.HTTP_200_OK)
-        except Sobrevivente.DoesNotExist:
-            return Response({"erro": "Um dos sobreviventes não foi encontrado."}, status=status.HTTP_404_NOT_FOUND)
-        except ValueError as e:
-            return Response({"erro": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-    def _calcular_pontos(self, itens_data):
-        total_pontos = 0
-        for item_data in itens_data:
-            # CORREÇÃO: Acessando item pelo ID para mais segurança e performance.
-            item = Item.objects.get(id=item_data['item_id'])
-            total_pontos += item.pontos * item_data['quantidade']
-        return total_pontos
-
-    def _transferir_itens(self, doador, receptor, itens_data):
-        # CORREÇÃO: Lógica ajustada para o modelo ManyToManyField com 'through'.
-        inventario_doador = doador.inventario
-        inventario_receptor = receptor.inventario
-
-        for item_info in itens_data:
-            item = Item.objects.get(id=item_info['item_id'])
-            quantidade = item_info['quantidade']
-
-            # Debita do doador
-            item_no_inventario_doador = ItemInventario.objects.get(inventario=inventario_doador, item=item)
-            if item_no_inventario_doador.quantidade < quantidade:
-                raise ValueError(f"O sobrevivente {doador.nome} não possui {quantidade} unidades de {item.nome}.")
-
-            item_no_inventario_doador.quantidade -= quantidade
-            if item_no_inventario_doador.quantidade == 0:
-                item_no_inventario_doador.delete()
-            else:
-                item_no_inventario_doador.save()
-
-            # Credita ao receptor
-            item_no_inventario_receptor, _ = ItemInventario.objects.get_or_create(inventario=inventario_receptor,
-                                                                                  item=item)
-            item_no_inventario_receptor.quantidade += quantidade
-            item_no_inventario_receptor.save()
-
-
-class TrocarItemViewSetSimples(viewsets.ViewSet):
-    """
-    ViewSet simples para troca de itens que apenas valida um serializer.
-    """
-
-    def create(self, request):
-        serializer = TrocaItemSerializer(data=request.data)
+        serializer = AtualizarLocalizacaoSerializer(data=request.data)
         if serializer.is_valid():
-            # NOTA: Este endpoint não realiza a troca, apenas valida os dados.
-            return Response({"message": "Dados da troca são válidos!"}, status=status.HTTP_200_OK)
+            sobrevivente.latitude = serializer.validated_data['latitude']
+            sobrevivente.longitude = serializer.validated_data['longitude']
+            sobrevivente.save()
+
+            return Response({
+                'mensagem': 'Localização atualizada com sucesso!',
+                'nova_latitude': sobrevivente.latitude,
+                'nova_longitude': sobrevivente.longitude
+            })
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=True, methods=['post'])
+    def reportar_infeccao(self, request, pk=None):
+        """Reporta um sobrevivente como infectado"""
+        sobrevivente_reportado = self.get_object()
 
-class RelatoriosView(views.APIView):
-    """
-    View que gera os relatórios solicitados.
-    """
+        # Adiciona o ID do sobrevivente reportador aos dados
+        data = request.data.copy()
+        data['sobrevivente_reportado'] = sobrevivente_reportado.id
 
-    def get(self, request, *args, **kwargs):
+        serializer = ReporteInfeccaoSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            # Verifica se o sobrevivente reportador existe
+            try:
+                sobrevivente_reportador = Sobrevivente.objects.get(
+                    id=request.data.get('sobrevivente_reportador')
+                )
+            except Sobrevivente.DoesNotExist:
+                return Response(
+                    {'erro': 'Sobrevivente reportador não encontrado.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Cria o reporte
+            ReporteInfeccao.objects.create(
+                sobrevivente_reportado=sobrevivente_reportado,
+                sobrevivente_reportador=sobrevivente_reportador
+            )
+
+            # Verifica se o sobrevivente deve ser marcado como infectado (3+ reportes)
+            total_reportes = sobrevivente_reportado.reportes_recebidos.count()
+            if total_reportes >= 3 and not sobrevivente_reportado.infectado:
+                sobrevivente_reportado.infectado = True
+                sobrevivente_reportado.save()
+
+                return Response({
+                    'mensagem': f'{sobrevivente_reportado.nome} foi marcado como INFECTADO após {total_reportes} reportes.',
+                    'total_reportes': total_reportes,
+                    'status': 'INFECTADO'
+                })
+
+            return Response({
+                'mensagem': f'Reporte registrado com sucesso. Total de reportes: {total_reportes}',
+                'total_reportes': total_reportes,
+                'status': 'SAUDÁVEL'
+            })
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def adicionar_item(self, request, pk=None):
+        """Adiciona itens ao inventário do sobrevivente"""
+        sobrevivente = self.get_object()
+
+        if sobrevivente.infectado:
+            return Response(
+                {'erro': 'Sobreviventes infectados não podem manipular seu inventário.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = AdicionarItemSerializer(data=request.data)
+        if serializer.is_valid():
+            tipo_item = serializer.validated_data['tipo_item']
+            quantidade = serializer.validated_data['quantidade']
+
+            # Busca ou cria o item no inventário
+            item, created = ItemInventario.objects.get_or_create(
+                sobrevivente=sobrevivente,
+                tipo_item=tipo_item,
+                defaults={'quantidade': 0}
+            )
+
+            item.quantidade += quantidade
+            item.save()
+
+            return Response({
+                'mensagem': f'{quantidade}x {item.get_tipo_item_display()} adicionado(s) ao inventário.',
+                'item': tipo_item,
+                'quantidade_total': item.quantidade,
+                'pontos_totais': item.calcular_pontos()
+            })
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def remover_item(self, request, pk=None):
+        """Remove itens do inventário do sobrevivente"""
+        sobrevivente = self.get_object()
+
+        if sobrevivente.infectado:
+            return Response(
+                {'erro': 'Sobreviventes infectados não podem manipular seu inventário.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = RemoverItemSerializer(data=request.data)
+        if serializer.is_valid():
+            tipo_item = serializer.validated_data['tipo_item']
+            quantidade = serializer.validated_data['quantidade']
+
+            try:
+                item = ItemInventario.objects.get(
+                    sobrevivente=sobrevivente,
+                    tipo_item=tipo_item
+                )
+            except ItemInventario.DoesNotExist:
+                return Response(
+                    {'erro': f'Você não possui {TipoItem(tipo_item).label} no inventário.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if item.quantidade < quantidade:
+                return Response(
+                    {
+                        'erro': f'Quantidade insuficiente. Você possui apenas {item.quantidade}x {item.get_tipo_item_display()}.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            item.quantidade -= quantidade
+            if item.quantidade == 0:
+                item.delete()
+                return Response({
+                    'mensagem': f'{quantidade}x {TipoItem(tipo_item).label} removido(s). Item removido do inventário.',
+                    'item': tipo_item,
+                    'quantidade_restante': 0
+                })
+            else:
+                item.save()
+                return Response({
+                    'mensagem': f'{quantidade}x {TipoItem(tipo_item).label} removido(s) do inventário.',
+                    'item': tipo_item,
+                    'quantidade_restante': item.quantidade,
+                    'pontos_restantes': item.calcular_pontos()
+                })
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def escambo(self, request, pk=None):
+        """Realiza escambo entre dois sobreviventes"""
+        sobrevivente_origem = self.get_object()
+
+        if sobrevivente_origem.infectado:
+            return Response(
+                {'erro': 'Sobreviventes infectados não podem realizar escambo.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = EscamboSerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                sobrevivente_destino = Sobrevivente.objects.get(
+                    id=serializer.validated_data['sobrevivente_destino_id']
+                )
+            except Sobrevivente.DoesNotExist:
+                return Response(
+                    {'erro': 'Sobrevivente de destino não encontrado.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if sobrevivente_destino.infectado:
+                return Response(
+                    {'erro': 'Não é possível fazer escambo com sobreviventes infectados.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if sobrevivente_origem.id == sobrevivente_destino.id:
+                return Response(
+                    {'erro': 'Não é possível fazer escambo consigo mesmo.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Realiza o escambo em uma transação
+            with transaction.atomic():
+                # Remove itens do sobrevivente origem e adiciona ao destino
+                for item_data in serializer.validated_data['itens_oferecidos']:
+                    tipo_item = item_data['tipo_item']
+                    quantidade = item_data['quantidade']
+
+                    # Remove do origem
+                    try:
+                        item_origem = ItemInventario.objects.get(
+                            sobrevivente=sobrevivente_origem,
+                            tipo_item=tipo_item
+                        )
+                        if item_origem.quantidade < quantidade:
+                            raise ValueError(f'Quantidade insuficiente de {TipoItem(tipo_item).label}')
+
+                        item_origem.quantidade -= quantidade
+                        if item_origem.quantidade == 0:
+                            item_origem.delete()
+                        else:
+                            item_origem.save()
+                    except ItemInventario.DoesNotExist:
+                        raise ValueError(f'Você não possui {TipoItem(tipo_item).label} no inventário')
+
+                    # Adiciona ao destino
+                    item_destino, created = ItemInventario.objects.get_or_create(
+                        sobrevivente=sobrevivente_destino,
+                        tipo_item=tipo_item,
+                        defaults={'quantidade': 0}
+                    )
+                    item_destino.quantidade += quantidade
+                    item_destino.save()
+
+                # Remove itens do sobrevivente destino e adiciona ao origem
+                for item_data in serializer.validated_data['itens_desejados']:
+                    tipo_item = item_data['tipo_item']
+                    quantidade = item_data['quantidade']
+
+                    # Remove do destino
+                    try:
+                        item_destino = ItemInventario.objects.get(
+                            sobrevivente=sobrevivente_destino,
+                            tipo_item=tipo_item
+                        )
+                        if item_destino.quantidade < quantidade:
+                            raise ValueError(
+                                f'{sobrevivente_destino.nome} não possui quantidade suficiente de {TipoItem(tipo_item).label}')
+
+                        item_destino.quantidade -= quantidade
+                        if item_destino.quantidade == 0:
+                            item_destino.delete()
+                        else:
+                            item_destino.save()
+                    except ItemInventario.DoesNotExist:
+                        raise ValueError(
+                            f'{sobrevivente_destino.nome} não possui {TipoItem(tipo_item).label} no inventário')
+
+                    # Adiciona ao origem
+                    item_origem, created = ItemInventario.objects.get_or_create(
+                        sobrevivente=sobrevivente_origem,
+                        tipo_item=tipo_item,
+                        defaults={'quantidade': 0}
+                    )
+                    item_origem.quantidade += quantidade
+                    item_origem.save()
+
+            return Response({
+                'mensagem': f'Escambo realizado com sucesso entre {sobrevivente_origem.nome} e {sobrevivente_destino.nome}!',
+                'sobrevivente_origem': sobrevivente_origem.nome,
+                'sobrevivente_destino': sobrevivente_destino.nome,
+                'itens_oferecidos': serializer.validated_data['itens_oferecidos'],
+                'itens_recebidos': serializer.validated_data['itens_desejados']
+            })
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'])
+    def relatorios(self, request):
+        """Gera relatórios estatísticos do sistema"""
+
+        # Contadores básicos
         total_sobreviventes = Sobrevivente.objects.count()
-        if total_sobreviventes == 0:
-            return Response({"mensagem": "Não há sobreviventes cadastrados para gerar relatórios."})
+        sobreviventes_infectados = Sobrevivente.objects.filter(infectado=True).count()
+        sobreviventes_saudaveis = total_sobreviventes - sobreviventes_infectados
 
-        infectados_count = Sobrevivente.objects.filter(infectado=True).count()
-        porc_infectados = (infectados_count / total_sobreviventes) * 100
-        porc_nao_infectados = 100 - porc_infectados
+        # Calcula porcentagens
+        if total_sobreviventes > 0:
+            porcentagem_infectados = (sobreviventes_infectados / total_sobreviventes) * 100
+            porcentagem_saudaveis = (sobreviventes_saudaveis / total_sobreviventes) * 100
+        else:
+            porcentagem_infectados = 0
+            porcentagem_saudaveis = 0
 
-        nao_infectados_count = total_sobreviventes - infectados_count
-        media_itens = {}
-        if nao_infectados_count > 0:
-            itens = Item.objects.all()
-            for item in itens:
-                # CORREÇÃO: Lógica ajustada para o modelo ManyToManyField com 'through'.
+        # Calcula médias de itens por usuário (apenas sobreviventes saudáveis)
+        medias_itens = {}
+        for tipo_item, nome_item in TipoItem.choices:
+            if sobreviventes_saudaveis > 0:
                 total_item = ItemInventario.objects.filter(
-                    inventario__sobrevivente__infectado=False, item=item
+                    sobrevivente__infectado=False,
+                    tipo_item=tipo_item
                 ).aggregate(total=Sum('quantidade'))['total'] or 0
-                media_itens[f"media_de_{item.nome.lower()}"] = total_item / nao_infectados_count
 
-        # CORREÇÃO: Lógica ajustada para o modelo ManyToManyField com 'through'.
-        pontos_perdidos = ItemInventario.objects.filter(
-            inventario__sobrevivente__infectado=True
-        ).aggregate(
-            total_pontos=Sum(F('quantidade') * F('item__pontos'), output_field=FloatField())
-        )['total_pontos'] or 0
+                media = total_item / sobreviventes_saudaveis
+            else:
+                media = 0
+
+            medias_itens[f'media_{tipo_item}_por_usuario'] = round(media, 2)
+
+        # Calcula pontos perdidos por usuários infectados
+        pontos_perdidos = 0
+        sobreviventes_infectados_obj = Sobrevivente.objects.filter(infectado=True)
+        for sobrevivente in sobreviventes_infectados_obj:
+            for item in sobrevivente.inventario.all():
+                pontos_perdidos += item.calcular_pontos()
 
         relatorio = {
-            "porcentagem_infectados": f"{porc_infectados:.2f}%",
-            "porcentagem_nao_infectados": f"{porc_nao_infectados:.2f}%",
-            "media_recursos_por_sobrevivente_nao_infectado": media_itens,
-            "pontos_perdidos_devido_a_sobreviventes_infectados": pontos_perdidos
+            'resumo_geral': {
+                'total_sobreviventes': total_sobreviventes,
+                'sobreviventes_saudaveis': sobreviventes_saudaveis,
+                'sobreviventes_infectados': sobreviventes_infectados,
+            },
+            'porcentagens': {
+                'porcentagem_infectados': round(porcentagem_infectados, 2),
+                'porcentagem_nao_infectados': round(porcentagem_saudaveis, 2),
+            },
+            'medias_itens': medias_itens,
+            'pontos_perdidos_infectados': pontos_perdidos,
+            'observacoes': {
+                'nota_1': 'Apenas sobreviventes saudáveis são considerados nos cálculos de média.',
+                'nota_2': 'Pontos perdidos referem-se aos itens de sobreviventes infectados que ficaram inacessíveis.',
+                'nota_3': 'Sobreviventes infectados não aparecem na listagem principal.'
+            }
         }
-        return Response(relatorio, status=status.HTTP_200_OK)
+
+        return Response(relatorio)
